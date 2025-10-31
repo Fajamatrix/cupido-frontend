@@ -1,11 +1,19 @@
 import React, { useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { useAppStore } from '@/store/appStore';
-import EmailField from './components/EmailField';
-import ReCaptchaModal from './components/ReCaptchaModal';
-import ForgotPasswordModal from './components/ForgotPasswordModal';
-import CompleteRegister, { RegistrationData } from './components/CompleteRegister';
+import EmailField from './components/forms/EmailField';
+import ReCaptchaModal from './components/modals/ReCaptchaModal';
+import ForgotPasswordModal from './components/modals/ForgotPasswordModal';
+import CompleteRegister, { RegistrationData } from './components/modals/CompleteRegister';
 import { authAPI } from '@/lib/api';
+
+interface User {
+  usuario_id: number;
+  email: string;
+  nombres?: string;
+  apellidos?: string;
+  estadocuenta: string;
+}
 
 interface LoginFormProps {
   onClose: () => void;
@@ -23,7 +31,7 @@ const LoginForm: React.FC<LoginFormProps> = ({ onClose, onSwitchToRegister }) =>
   const [recaptchaToken, setRecaptchaToken] = useState<string>('');
 
   const { toast } = useToast();
-  const { openDashboard } = useAppStore();
+  const { openDashboard, login, setLoading } = useAppStore();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -64,19 +72,22 @@ const LoginForm: React.FC<LoginFormProps> = ({ onClose, onSwitchToRegister }) =>
 
       // Verificar el estado de cuenta del usuario
       const estadocuenta = response.estadocuenta;
-
-      if (estadocuenta === 'activa') {
+      if(estadocuenta === '1'){
+        setShowCompleteRegister(true);
+      }
+      else if (estadocuenta === '0') {
+        login(response.user);
         toast({
           title: "¡Bienvenido!",
           description: "Has iniciado sesión correctamente.",
         });
-
         onClose();
-      } else if (estadocuenta === 'incompleta') {
-        // Mostrar CompleteRegister si el perfil no está completo
-        setShowCompleteRegister(true);
+        openDashboard();
+      } else if (estadocuenta === '2') {
+        onClose();
+        openDashboard();
       } else {
-        // Manejar otros estados de cuenta
+        console.log("cuenta con estos diferentes a 0,1,2");
         toast({
           title: "Cuenta no disponible",
           description: "Tu cuenta no está disponible para iniciar sesión.",
@@ -134,13 +145,31 @@ const LoginForm: React.FC<LoginFormProps> = ({ onClose, onSwitchToRegister }) =>
 
   const handleCompleteRegisterSubmit = async (userData: RegistrationData) => {
     setIsSubmitting(true);
+    setLoading(true);
 
     try {
-      // Aquí irías el registro completo con todos los datos
-      console.log('Completando registro después de login:', userData);
+      // Formatear fecha de nacimiento
+      const birthDate = `${userData.birthDate.year}-${userData.birthDate.month.padStart(2, '0')}-${userData.birthDate.day.padStart(2, '0')}`;
 
-      // Simulación de registro completo
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Mapear género a ID (asumiendo que el backend espera IDs numéricos)
+      const genderMapping: { [key: string]: number } = {
+        'male': 1,    // Asumiendo que 1 es masculino
+        'female': 2,  // Asumiendo que 2 es femenino
+        'other': 3    // Asumiendo que 3 es otro
+      };
+
+      const genderId = genderMapping[userData.gender] || 1;
+
+      // Llamar al endpoint real del backend
+      const response = await authAPI.updateProfile({
+        nombres: userData.name,
+        apellidos: userData.lastName,
+        genero_id: genderId,
+        fechanacimiento: birthDate,
+        descripcion: userData.description
+      });
+
+      console.log('Perfil actualizado:', response);
 
       toast({
         title: "¡Perfil completado!",
@@ -149,16 +178,51 @@ const LoginForm: React.FC<LoginFormProps> = ({ onClose, onSwitchToRegister }) =>
 
       setShowCompleteRegister(false);
 
+      // Guardar tokens después de completar el perfil
+      localStorage.setItem('access_token', response.access);
+      localStorage.setItem('refresh_token', response.refresh);
+
+      // Actualizar estado global de autenticación
+      login(response.user);
+
       // En lugar de cerrar, abrir el dashboard
       setTimeout(() => {
         onClose(); // Cerrar el modal de CompleteRegister
         openDashboard(); // Abrir el dashboard
-      }, 2000);
+      }, 1000);
 
-    } catch (error) {
+    } catch (error: any) {
+      console.error('Error al completar perfil:', error);
+
+      let errorMessage = "No pudimos completar tu perfil. Intenta de nuevo.";
+
+      if (error.response?.data?.error) {
+        errorMessage = error.response.data.error;
+      } else if (error.response?.data?.nombres) {
+        errorMessage = Array.isArray(error.response.data.nombres)
+          ? error.response.data.nombres[0]
+          : error.response.data.nombres;
+      } else if (error.response?.data?.apellidos) {
+        errorMessage = Array.isArray(error.response.data.apellidos)
+          ? error.response.data.apellidos[0]
+          : error.response.data.apellidos;
+      } else if (error.response?.data?.genero_id) {
+        errorMessage = Array.isArray(error.response.data.genero_id)
+          ? error.response.data.genero_id[0]
+          : error.response.data.genero_id;
+      } else if (error.response?.data?.fechanacimiento) {
+        errorMessage = Array.isArray(error.response.data.fechanacimiento)
+          ? error.response.data.fechanacimiento[0]
+          : error.response.data.fechanacimiento;
+      } else if (error.response?.data?.descripcion) {
+        errorMessage = Array.isArray(error.response.data.descripcion)
+          ? error.response.data.descripcion[0]
+          : error.response.data.descripcion;
+      }
+
       toast({
         title: "Error al completar perfil",
-        description: "No pudimos completar tu perfil. Intenta de nuevo.",
+        description: errorMessage,
         variant: "destructive"
       });
     } finally {
@@ -222,6 +286,7 @@ const LoginForm: React.FC<LoginFormProps> = ({ onClose, onSwitchToRegister }) =>
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="Ingresa tu contraseña"
+                    maxLength={50}
                     className="w-full px-2.5 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-pink-500 focus:border-transparent text-xs"
                   />
                   

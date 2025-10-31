@@ -1,22 +1,41 @@
 import React from 'react';
 import { useAppStore } from '@/store/appStore';
 import { useToast } from '@/hooks/use-toast';
+import { authAPI } from '@/lib/api';
 
 const Dashboard: React.FC = () => {
-  const { closeModals } = useAppStore();
+  const { closeModals, logout, user } = useAppStore();
   const { toast } = useToast();
 
-  const handleLogout = () => {
-    // Aquí iría la lógica real de logout
-    console.log('Cerrando sesión...');
+  const handleLogout = async () => {
+    try {
+      // Llamar al endpoint de logout del backend
+      await authAPI.logout();
 
-    toast({
-      title: "Sesión cerrada",
-      description: "Has cerrado sesión exitosamente.",
-    });
+      // Limpiar estado global y localStorage
+      logout();
 
-    // Cerrar el dashboard y volver a la página principal
-    closeModals();
+      toast({
+        title: "Sesión cerrada",
+        description: "Has cerrado sesión exitosamente.",
+      });
+
+      // Cerrar el dashboard y volver a la página principal
+      closeModals();
+    } catch (error) {
+      console.error('Error al cerrar sesión:', error);
+
+      // Aun si falla el logout del backend, limpiar el estado local
+      logout();
+
+      toast({
+        title: "Sesión cerrada",
+        description: "Sesión cerrada localmente.",
+        variant: "destructive"
+      });
+
+      closeModals();
+    }
   };
 
   return (
@@ -25,7 +44,7 @@ const Dashboard: React.FC = () => {
 
         {/* Botón para cerrar */}
         <button
-          onClick={closeModals}
+          onClick={handleLogout}
           className="absolute top-4 right-4 text-gray-700 hover:text-gray-900 p-1 rounded-full hover:bg-rose-300 transition-colors z-10"
           aria-label="Cerrar dashboard"
         >
@@ -48,8 +67,7 @@ const Dashboard: React.FC = () => {
           {/* Header */}
           <div className="mb-8 text-center">
             <div className="text-black text-3xl font-normal font-['Poppins']">
-              Bienvenido a{' '}
-              <span className="text-[#E93923] font-semibold">CUPIDO</span>
+              Hola, {user?.nombres}!
             </div>
             <div className="text-black text-2xl font-medium font-['Poppins'] mt-2">
               Dashboard
