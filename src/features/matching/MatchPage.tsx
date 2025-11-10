@@ -217,7 +217,7 @@ const MatchPage: React.FC<MatchPageProps> = ({ matchData }) => {
     }, 0);
   };
 
-  // Swipe handlers
+  // Swipe handler
   const handlePointerDown = (e: React.PointerEvent) => {
     if (isAnimating || likesRemaining <= 0) return;
     
