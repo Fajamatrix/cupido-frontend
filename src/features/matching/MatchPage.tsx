@@ -8,6 +8,8 @@ import MatchPlaceholder3 from "@/assets/MatchPlaceholder3.jpg";
 import MatchDislike from "@/assets/MatchDislike.png";
 import MatchLike from "@/assets/MatchLike.png";
 import OptionDots from "@/assets/OptionDots.png";
+import Match1 from "@/assets/Match1.png";
+import Match2 from "@/assets/Match2.png";
 import MatchBG from "@/assets/background_verification.webp";
 import CupidWhite from "@/assets/cupid-white.png";
 
@@ -18,13 +20,17 @@ interface MatchData {
     description?: string;
     [key: string]: any;
   };
-  secondaryImages?: [string?, string?];
+  secondaryImages?: string[];
 }
 
 interface MatchPageProps {
   matchData?: MatchData;
+  // Si la cuenta del usuario está completa. Si es false, mostramos el overlay con el logo Whitecupid.
+  isAccountComplete?: boolean;
+  // Opcional: callback para abrir el chat con el match
+  onOpenChat?: (matchId?: string) => void;
 }
-
+// info placeholder 
 const mockMatchDataList: MatchData[] = [
   {
     mainImage: MatchPlaceholder1,
@@ -46,7 +52,7 @@ const mockMatchDataList: MatchData[] = [
       ubicación: "Medellín, Colombia",
       intereses: "Otorrinolaringologia, Arte, Lectura, Cine"
     },
-    secondaryImages: [MatchPlaceholder3, MatchPlaceholder1]
+    secondaryImages: [MatchPlaceholder3]
   },
   {
     mainImage: MatchPlaceholder3,
@@ -57,11 +63,13 @@ const mockMatchDataList: MatchData[] = [
       ubicación: "Cali, Colombia",
       intereses: "Gastronomía, Fotografía, Naturaleza, Deportes, Música"
     },
-    secondaryImages: [MatchPlaceholder1, MatchPlaceholder2]
+    secondaryImages: []
   }
 ];
 
-const MatchPage: React.FC<MatchPageProps> = ({ matchData }) => {
+const MatchPage: React.FC<MatchPageProps> = ({ matchData, isAccountComplete, onOpenChat }) => {
+  const accountComplete = typeof isAccountComplete === 'boolean' ? isAccountComplete : true;
+
   const [currentIndex, setCurrentIndex] = useState(() =>
     Math.floor(Math.random() * mockMatchDataList.length)
   );
@@ -71,9 +79,108 @@ const MatchPage: React.FC<MatchPageProps> = ({ matchData }) => {
   const [showOverlay, setShowOverlay] = useState(false);
   const [overlayIcon, setOverlayIcon] = useState<string>("");
   const [showOptions, setShowOptions] = useState(false);
-  const [likesRemaining, setLikesRemaining] = useState(10);
-  const [timeUntilReset, setTimeUntilReset] = useState<string>("");
-  const [showLimitOverlay, setShowLimitOverlay] = useState(false);
+  // Modal que aparece cuando se genera un match
+  const [showMatchModal, setShowMatchModal] = useState(false);
+  // Animación previa al modal de match
+  const [matchAnimRunning, setMatchAnimRunning] = useState(false);
+  const [img1Style, setImg1Style] = useState<React.CSSProperties>({});
+  const [img2Style, setImg2Style] = useState<React.CSSProperties>({});
+  const [modalTranslateY, setModalTranslateY] = useState<string>('100vh');
+
+  // Reproduce la animación previa al modal y luego muestra el modal
+  const playMatchAnimation = () => {
+    const enterDuration = 1200; // ms
+    const pauseDuration = 1200; // 1s pause in center
+    const exitDuration = 600;
+
+    // helper: calcula estilos de tamaño para la imagen según la relación de aspecto de la pantalla
+    const getImageSizeStyle = () => {
+      if (typeof window === 'undefined') return { width: '80vw', maxWidth: '900px' };
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      // si alto > ancho (portrait) -> ajustar al ancho; si ancho >= alto -> ajustar al alto
+      if (h > w) {
+        return { width: '90vw', maxWidth: '1200px', height: 'auto' };
+      } else {
+        return { height: '60vh', maxHeight: '1200px', width: 'auto' };
+      }
+    };
+
+    // Inicial: colocar las imágenes fuera de pantalla horizontalmente (img1: derecha, img2: izquierda)
+    setMatchAnimRunning(true);
+    const sizeStyle = getImageSizeStyle();
+    // imagenes mucho mas grandes (casi 4x)
+    setImg1Style({
+      position: 'fixed',
+      left: '110vw', // start off to the right
+      top: '0vh', // 0% vertical
+      transform: 'translateX(-50%) rotate(-5deg)',
+      transition: `left ${enterDuration}ms cubic-bezier(0.22, 1, 0.36, 1), opacity ${enterDuration}ms ease`,
+      opacity: 0,
+      zIndex: 60,
+      ...sizeStyle,
+    });
+
+    setImg2Style({
+      position: 'fixed',
+      left: '-110vw', // start off to the left
+      bottom: '0vh', // pegada al borde inferior
+      transform: 'translateX(-50%) rotate(5deg)',
+      transition: `left ${enterDuration}ms cubic-bezier(0.22, 1, 0.36, 1), opacity ${enterDuration}ms ease`,
+      opacity: 0,
+      zIndex: 60,
+      ...sizeStyle,
+    });
+
+    // small timeout to allow initial styles to apply
+    setTimeout(() => {
+      // Entradas: mover a centro horizontal (solo izquierda/derecha), vertical no cambia
+      setImg1Style(prev => ({
+        ...prev,
+        left: '50%',
+        opacity: 1,
+      }));
+
+      setImg2Style(prev => ({
+        ...prev,
+        left: '50%',
+        opacity: 1,
+      }));
+
+      // Pause in center for 1s
+      setTimeout(() => {
+        // Salida: van hacia el lado opuesto (atraviesan pantalla), easing SineIn aproximado
+        setImg1Style(prev => ({
+          ...prev,
+          left: '-110vw',
+          transition: `left ${exitDuration}ms cubic-bezier(0.47, 0, 0.745, 0.715), opacity ${exitDuration}ms ease`,
+          opacity: 0,
+        }));
+
+        setImg2Style(prev => ({
+          ...prev,
+          left: '110vw',
+          transition: `left ${exitDuration}ms cubic-bezier(0.47, 0, 0.745, 0.715), opacity ${exitDuration}ms ease`,
+          opacity: 0,
+        }));
+
+        setTimeout(() => {
+          // ocultar animación y mostrar modal animado desde abajo
+          setMatchAnimRunning(false);
+          setImg1Style({});
+          setImg2Style({});
+
+          // Mostrar fondo semitransparente y modal subiendo
+          setShowMatchModal(true);
+          // animación del modal: empezamos fuera de pantalla y la animamos a centered
+          setModalTranslateY('100vh');
+          setTimeout(() => {
+            setModalTranslateY('-50%');
+          }, 30);
+        }, exitDuration + 50);
+      }, pauseDuration + 50);
+    }, 30);
+  };
 
   // Swipe states
   const [isDragging, setIsDragging] = useState(false);
@@ -84,26 +191,9 @@ const MatchPage: React.FC<MatchPageProps> = ({ matchData }) => {
 
   const displayData = matchData || mockMatchDataList[currentIndex];
 
-  // Calculate time until midnight reset
-  useEffect(() => {
-    const calculateTimeUntilMidnight = () => {
-      const now = new Date();
-      const tomorrow = new Date();
-      tomorrow.setHours(24, 0, 0, 0);
-      const diff = tomorrow.getTime() - now.getTime();
+  // Nota: la lógica de límite de likes fue eliminada; no necesitamos calcular reinicios.
 
-      const hours = Math.floor(diff / (1000 * 60 * 60));
-      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-
-      setTimeUntilReset(`${hours} h ${minutes} m`);
-    };
-
-    calculateTimeUntilMidnight();
-    const interval = setInterval(calculateTimeUntilMidnight, 60000);
-
-    return () => clearInterval(interval);
-  }, []);
-
+  //efecto de scroll
   useEffect(() => {
     const handleScroll = () => {
       const viewport = document.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement;
@@ -129,30 +219,26 @@ const MatchPage: React.FC<MatchPageProps> = ({ matchData }) => {
     };
   }, []);
 
+  //animacion de like
   const handleLike = () => {
-    if (isAnimating || likesRemaining <= 0) {
-      setShowLimitOverlay(true);
+    if (isAnimating) return;
+
+    // Si la cuenta no está completa, mostramos el overlay con el logo Whitecupid
+    if (!accountComplete) {
+      setOverlayIcon(CupidWhite);
+      setShowOverlay(true);
+      setTimeout(() => setShowOverlay(false), 2000);
       return;
     }
+
     setIsAnimating(true);
-    setLikesRemaining(prev => {
-      const newValue = prev - 1;
-      if (newValue === 0) {
-        setTimeout(() => {
-          setShowLimitOverlay(true);
-        }, 0);
-      }
-      return newValue;
-    });
     setOverlayIcon(MatchLike);
 
     setTimeout(() => {
       setRotation(135);
 
       setTimeout(() => {
-        if (likesRemaining > 1) {
-          setCurrentIndex((prev) => (prev + 1) % mockMatchDataList.length);
-        }
+        setCurrentIndex((prev) => (prev + 1) % mockMatchDataList.length);
         setRotation(-20);
         setShowOverlay(true);
         const viewport = document.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement;
@@ -163,40 +249,39 @@ const MatchPage: React.FC<MatchPageProps> = ({ matchData }) => {
         setTimeout(() => {
           setRotation(0);
           setIsAnimating(false);
-          if (likesRemaining > 1) {
-            setTimeout(() => {
-              setShowOverlay(false);
-            }, 200);
+          setTimeout(() => {
+            setShowOverlay(false);
+          }, 200);
+
+          // Simular un match aleatorio (ajusta la condición según la lógica real)
+          if (Math.random() < 0.35) {
+            // Reproducir animación previa y luego mostrar modal
+            playMatchAnimation();
           }
         }, 500);
       }, 250);
     }, 0);
   };
 
+  //animacion de dislike
   const handleDislike = () => {
-    if (isAnimating || likesRemaining <= 0) {
-      setShowLimitOverlay(true);
+    if (isAnimating) return;
+
+    if (!accountComplete) {
+      setOverlayIcon(CupidWhite);
+      setShowOverlay(true);
+      setTimeout(() => setShowOverlay(false), 2000);
       return;
     }
+
     setIsAnimating(true);
-    setLikesRemaining(prev => {
-      const newValue = prev - 1;
-      if (newValue === 0) {
-        setTimeout(() => {
-          setShowLimitOverlay(true);
-        }, 0);
-      }
-      return newValue;
-    });
     setOverlayIcon(MatchDislike);
 
     setTimeout(() => {
       setRotation(-135);
 
       setTimeout(() => {
-        if (likesRemaining > 1) {
-          setCurrentIndex((prev) => (prev + 1) % mockMatchDataList.length);
-        }
+        setCurrentIndex((prev) => (prev + 1) % mockMatchDataList.length);
         setRotation(20);
         setShowOverlay(true);
         const viewport = document.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement;
@@ -207,19 +292,17 @@ const MatchPage: React.FC<MatchPageProps> = ({ matchData }) => {
         setTimeout(() => {
           setRotation(0);
           setIsAnimating(false);
-          if (likesRemaining > 1) {
-            setTimeout(() => {
-              setShowOverlay(false);
-            }, 200);
-          }
+          setTimeout(() => {
+            setShowOverlay(false);
+          }, 200);
         }, 500);
       }, 250);
     }, 0);
   };
 
-  // Swipe handler
+  // Like/Dislike con Swipe
   const handlePointerDown = (e: React.PointerEvent) => {
-    if (isAnimating || likesRemaining <= 0) return;
+    if (isAnimating) return;
     
     setIsDragging(true);
     setDragStart({ x: e.clientX, y: e.clientY });
@@ -229,7 +312,7 @@ const MatchPage: React.FC<MatchPageProps> = ({ matchData }) => {
   };
 
   const handlePointerMove = (e: React.PointerEvent) => {
-    if (!isDragging || likesRemaining <= 0) return;
+    if (!isDragging) return;
 
     let deltaX = e.clientX - dragStart.x;
     const deltaY = e.clientY - dragStart.y;
@@ -243,12 +326,12 @@ const MatchPage: React.FC<MatchPageProps> = ({ matchData }) => {
     
     setDragOffset({ x: clampedDeltaX, y: verticalMove });
     
-    // Calculate rotation based on horizontal drag
+    // rotacion lateral
     const maxRotation = 15;
     const rotationValue = (clampedDeltaX / 100) * maxRotation;
     setSwipeRotation(rotationValue);
 
-    // Show preview overlay
+    // overlay de la accion
     if (Math.abs(clampedDeltaX) > 50) {
       setShowOverlay(true);
       setOverlayIcon(clampedDeltaX > 0 ? MatchLike : MatchDislike);
@@ -256,7 +339,7 @@ const MatchPage: React.FC<MatchPageProps> = ({ matchData }) => {
       setShowOverlay(false);
     }
 
-    // Auto-trigger action when reaching the limit
+    // Activar cuando se alcanza el limite
     if (Math.abs(deltaX) >= maxHorizontalMove) {
       // Trigger the action immediately
       setIsDragging(false);
@@ -324,22 +407,7 @@ const MatchPage: React.FC<MatchPageProps> = ({ matchData }) => {
         backgroundRepeat: 'no-repeat'
       }}
     >
-      {/* Likes Limit Overlay */}
-      {showLimitOverlay && (
-        <Dialog open={showLimitOverlay} onOpenChange={setShowLimitOverlay}>
-          <DialogContent className="fixed top-1/4 left-1/2 -translate-x-1/2 bg-white rounded-lg p-6 w-[350px] text-center">
-            <div className="flex flex-col items-center gap-4">
-              <h2 className="text-xl font-semibold">¡Wow! Ya diste todos tus "Me Gusta" de hoy.</h2>
-              <p className="text-gray-600">
-                Vuelve a intentarlo en <span className="font-bold">{timeUntilReset}</span> y sigue conectando con nuevas personas. 💫
-              </p>
-              <DialogClose className="bg-red-500 text-white px-6 py-2 rounded-full hover:bg-red-600 transition-colors">
-                Entendido
-              </DialogClose>
-            </div>
-          </DialogContent>
-        </Dialog>
-      )}
+      {/* Si la cuenta no está completa, el overlay se muestra inline cuando corresponde (no hay diálogo de límite de likes). */}
       <Dialog open={showOptions} onOpenChange={setShowOptions}>
         <DialogContent className="bg-white rounded-lg p-0 w-[300px] overflow-hidden ">
           <div className="flex flex-col w-full pt-8">
@@ -365,6 +433,76 @@ const MatchPage: React.FC<MatchPageProps> = ({ matchData }) => {
           </div>
         </DialogContent>
       </Dialog>
+      {/* Match Modal + Pre-animation */}
+      {/* Fondo blanco que cubre la pantalla durante la animación/modal */}
+      {(matchAnimRunning || showMatchModal) && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(255,255,255,0.5)', zIndex: 50 }} aria-hidden />
+      )}
+
+      {/* Imágenes animadas previas al modal (solo durante matchAnimRunning) */}
+      {matchAnimRunning && (
+        <>
+          <img src={Match1} alt="match-anim-1" style={{ ...img1Style }} />
+          <img src={Match2} alt="match-anim-2" style={{ ...img2Style }} />
+        </>
+      )}
+
+      {/* Modal del match: aparece animado desde abajo. */}
+      <Dialog open={showMatchModal} onOpenChange={(open) => { if (!open) setShowMatchModal(false); }}>
+        <DialogContent
+            className="fixed left-1/2 -translate-x-1/2 bg-white rounded-lg text-center"
+            style={{
+              left: '50%',
+              // Ocupa el 75% del viewport (alto y ancho)
+              width: '75vw',
+              height: '75vh',
+              maxWidth: '1100px',
+              maxHeight: '100vh',
+              overflow: 'hidden',
+              transform: `translate(-50%, ${modalTranslateY})`,
+              zIndex: 80,
+              transition: 'transform 450ms cubic-bezier(0.22, 1, 0.36, 1)'
+            }}
+          >
+            <div style={{display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, height: '100%', padding: 20, boxSizing: 'border-box', overflow: 'hidden'}}>
+              {/* Avatar: usa porcentajes relativos al contenedor para que escale automáticamente */}
+              <div style={{height: '36%', width: 'auto', maxWidth: '40%', minWidth: 64, aspectRatio: '1/1', borderRadius: '9999px', overflow: 'hidden', boxShadow: '0 6px 18px rgba(0,0,0,0.12)'}}>
+                <img src={displayData?.mainImage || '/placeholder.svg'} alt={displayData?.info?.title || 'Match'} style={{width: '100%', height: '100%', objectFit: 'cover', display: 'block'}} />
+              </div>
+
+              <h2 style={{margin: 0, fontSize: 'clamp(18px, 2.4vh, 28px)', fontWeight: 700}}>¡Es un match!</h2>
+              <p style={{margin: 0, fontSize: 'clamp(13px, 1.8vh, 18px)', color: '#4B5563'}}>
+                Has hecho match con <span style={{fontWeight: 700}}>{displayData?.info?.title}</span>
+              </p>
+
+              {/* Contenedor central: elementos apilados verticalmente para evitar que los botones se vayan a un lado */}
+              <div style={{display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', gap: 12, width: '100%', flexGrow: 1, overflow: 'hidden'}}>
+                {/* Texto descriptivo: ocupa el ancho completo y centra el texto */}
+                <div style={{width: '100%', padding: 8, boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
+                  <p style={{margin: 0, fontSize: 'clamp(12px, 1.6vh, 16px)', color: '#374151', textAlign: 'center', overflow: 'hidden'}}>
+                    {displayData?.info?.description || 'Descripcion'}
+                  </p>
+                </div>
+
+                {/* Botones / acciones: apilados verticalmente y centrados, ocupan todo el ancho para evitar desplazamientos laterales */}
+                <div style={{width: '100%', display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center', justifyContent: 'center', padding: '8px 12px', boxSizing: 'border-box'}}>
+                  <button
+                    onClick={() => {
+                      setShowMatchModal(false);
+                      if (onOpenChat) onOpenChat();
+                      else window.location.href = '/chat';
+                    }}
+                    className="bg-red-500 text-white px-6 py-3 rounded-full"
+                    style={{width: '60%', maxWidth: 280, fontSize: 'clamp(13px, 1.6vh, 16px)'}}
+                  >
+                    Ir al chat
+                  </button>
+                  <DialogClose className="text-sm text-gray-500 underline" style={{fontSize: 'clamp(12px, 1.4vh, 14px)'}}>Cerrar y seguir</DialogClose>
+                </div>
+              </div>
+            </div>
+          </DialogContent>
+      </Dialog>
       <div style={{ perspective: '1500px' }}>
         <Card
           ref={cardRef}
@@ -374,11 +512,11 @@ const MatchPage: React.FC<MatchPageProps> = ({ matchData }) => {
           onPointerCancel={handlePointerCancel}
           className="h-[85vh] w-[calc(85vh*101/150)] bg-white rounded-lg aspect-[101/150] overflow-hidden flex flex-col relative shadow-lg shadow-black/20 touch-none select-none"
           style={{
-            transform: `rotateY(${rotation}deg) translateX(${dragOffset.x}px) translateY(${dragOffset.y}px) rotateZ(${swipeRotation}deg)`,
-            transition: isDragging ? 'none' : 'transform 0.6s cubic-bezier(0.4, 0.0, 0.2, 1)',
-            transformStyle: 'preserve-3d',
-            cursor: likesRemaining <= 0 ? 'not-allowed' : (isDragging ? 'grabbing' : 'grab')
-          }}
+              transform: `rotateY(${rotation}deg) translateX(${dragOffset.x}px) translateY(${dragOffset.y}px) rotateZ(${swipeRotation}deg)`,
+              transition: isDragging ? 'none' : 'transform 0.6s cubic-bezier(0.4, 0.0, 0.2, 1)',
+              transformStyle: 'preserve-3d',
+              cursor: isDragging ? 'grabbing' : 'grab'
+            }}
         >
           {/* Name/age bar - Static overlay */}
           <div className={`absolute top-0 left-0 w-full px-4 py-3 flex flex-col gap-2 z-20 pointer-events-none transition-colors duration-300 ${isAtTop
@@ -412,23 +550,18 @@ const MatchPage: React.FC<MatchPageProps> = ({ matchData }) => {
               </div>
             </div>
           </div>
-
-          <ScrollArea className="flex-1 w-full [&>div[data-orientation='vertical']]:hidden relative">
+             <ScrollArea className="flex-1 w-full [&>div[data-radix-scroll-area-viewport]]:!pointer-events-auto relative touch-pan-y">
             {/* Overlay */}
             <div
-              className={`absolute inset-0 z-50 flex flex-col items-center justify-center transition-opacity duration-200 ${showOverlay ? 'opacity-100' : 'opacity-0 pointer-events-none'
-                } ${likesRemaining === 0 ? 'bg-red-300' : overlayIcon === MatchLike ? 'bg-red-500' : 'bg-blue-500'}`}
+              className={`absolute inset-0 z-50 flex flex-col items-center justify-center transition-opacity duration-200 pointer-events-none ${showOverlay ? 'opacity-100' : 'opacity-0'
+                } ${!accountComplete ? 'bg-red-300' : overlayIcon === MatchLike ? 'bg-red-500' : 'bg-blue-500'}`}
             >
               <img
-                src={likesRemaining === 0 ? CupidWhite : overlayIcon}
+                src={!accountComplete ? CupidWhite : overlayIcon}
                 alt="Action Icon"
-                className="w-1/2 aspect-square object-contain animate-pulse invert brightness-0 draggable={false} pointer-events-none"
+                className="w-1/2 aspect-square object-contain animate-pulse invert brightness-0"
+                draggable={false}
               />
-              {likesRemaining === 0 && (
-                <span className="font-bold text-center text-4xl absolute bottom-[25%] text-white">
-                  {timeUntilReset}
-                </span>
-              )}
             </div>
             <div className="flex flex-col w-full h-full">
               {/* Main Image Section */}
@@ -491,24 +624,29 @@ const MatchPage: React.FC<MatchPageProps> = ({ matchData }) => {
                 </div>
               </div>
 
-              {/* Two Image Frames */}
+              {/* Two Image Frames (render sólo si existen) */}
               <div className="w-full flex flex-col select-none">
-                <div className="w-full aspect-square overflow-hidden rounded-lg shadow-sm shadow-black/50 select-none">
-                  <img
-                    src={displayData?.secondaryImages?.[0] || "/placeholder.svg"}
-                    alt="Secondary image 1"
-                    className="w-full h-full object-cover select-none pointer-events-none"
-                    draggable={false}
-                  />
-                </div>
-                <div className="w-full aspect-square overflow-hidden rounded-lg mt-[10px] shadow-sm shadow-black/50 select-none">
-                  <img
-                    src={displayData?.secondaryImages?.[1] || "/placeholder.svg"}
-                    alt="Secondary image 2"
-                    className="w-full h-full object-cover select-none pointer-events-none"
-                    draggable={false}
-                  />
-                </div>
+                {displayData?.secondaryImages?.[0] ? (
+                  <div className="w-full aspect-square overflow-hidden rounded-lg shadow-sm shadow-black/50 select-none">
+                    <img
+                      src={displayData.secondaryImages[0]}
+                      alt="Secondary image 1"
+                      className="w-full h-full object-cover select-none pointer-events-none"
+                      draggable={false}
+                    />
+                  </div>
+                ) : null}
+
+                {displayData?.secondaryImages?.[1] ? (
+                  <div className="w-full aspect-square overflow-hidden rounded-lg mt-[10px] shadow-sm shadow-black/50 select-none">
+                    <img
+                      src={displayData.secondaryImages[1]}
+                      alt="Secondary image 2"
+                      className="w-full h-full object-cover select-none pointer-events-none"
+                      draggable={false}
+                    />
+                  </div>
+                ) : null}
               </div>
             </div>
           </ScrollArea>
